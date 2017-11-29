@@ -1,0 +1,9 @@
+[submodule "Geom3D"]
+	path = Geom3D
+	url = https://github.com/ctralie/Geom3D.git
+[submodule "GSPLib"]
+	path = GSPLib
+	url = https://github.com/ctralie/GSPLib.git
+[submodule "ripser"]
+	path = ripser
+	url = https://github.com/ctralie/ripser.git
