@@ -11,8 +11,10 @@ from mpl_toolkits.mplot3d import Axes3D
 import time
 import glob
 import os
+import pandas
 import subprocess
 import ripser.ripser as ripser
+from sklearn.linear_model import Ridge, RidgeCV
 
 def convertGUDHIPD(pers):
     Is = [[], [], []]
@@ -30,28 +32,102 @@ def getPlotName(f, ext):
     s = "%s_%s"%(s1, s2)
     return s
 
-def comparePersistenceImages(files, useH2 = False, psigma = 0.1):
+def getPIs(files, useH1, useH2, psigma, weightfn = lambda b, l: l*(l > 0.05)):
+    #Compute persistence images
+    PIs = []
+    N = len(files)
+    for i in range(N):
+        print("Getting persistence images %i of %i"%(i+1, N))
+        X = sio.loadmat(files[i])
+        [I0, I1, I2] = [X['I0'], X['I1'], X['I2']]
+        I = np.array([])
+        if useH1:
+            res = getPersistenceImage(I1, [0, 1, 0, 1], 0.01, weightfn = weightfn, psigma = psigma)
+            I = res['PI']
+        if useH2:
+            res = getPersistenceImage(I2, [0, 1, 0, 1], 0.01, weightfn = weightfn, psigma = psigma)
+            if useH1:
+                I = np.concatenate((I, res['PI']), 0)
+            else:
+                I = res['PI']
+        PIs.append(I.flatten())
+    return (res, np.array(PIs))
+
+
+def ridgeRegressionPIs(files, useH1 = True, useH2 = True, psigma=0.1):
+    savestr = ""
+    if useH1:
+        savestr += "H1"
+    if useH2:
+        savestr += "H2"
+    N = len(files)
+    (res, PIs) = getPIs(files, useH1, useH2, psigma)
+    TrabNums = pandas.read_csv("TrabNums.csv")
+    specimens = [s.lower() for s in TrabNums['Specimen'].values.tolist()]
+    values = TrabNums['Trab num. (1/mm)'].values
+    specimen2val = {specimens[i]:values[i] for i in range(len(specimens))}
+    x = [specimen2val[f.split("qrtosso_")[1][0:2]] for f in files]
+    x = np.array(x)
+    alphas = 10.0**np.linspace(-3, 3, 1000)
+    clf = RidgeCV(alphas=alphas, store_cv_values=True).fit(PIs, x)
+    errs = np.sqrt(np.mean(clf.cv_values_, 0)) #RMSE
+    idx = np.argmin(errs)
+    alpha = alphas[idx]
+    alpha = 0.08
+
+    plt.figure()
+    plt.semilogx(alphas, errs)
+    plt.stem([alpha], [errs[idx]])
+    ry = np.max(errs) - np.min(errs)
+    plt.ylim([np.min(errs)-0.1*ry, np.max(errs)+0.1*ry])
+    plt.xlabel("$\\alpha$")
+    plt.ylabel("RMSE")
+    plt.title("$\\alpha = %.3g, err = %.3g$"%(alpha, errs[idx]))
+    plt.savefig("CrossVal_%s.svg"%savestr, bbox_inches='tight')
+
+    clf = Ridge(alpha=alpha).fit(PIs, x)
+    w = clf.coef_
+    if useH1 and useH2:
+        dim = int(np.sqrt(PIs.shape[1]/2))
+        w = np.reshape(w, (dim*2, dim))
+        I1 = w[0:dim, :]
+        I2 = w[dim::, :]
+        plt.figure(figsize=(12, 6))
+        plt.subplot(121)
+        m = np.max(np.abs(I1))
+        plt.imshow(I1, vmin = -m, vmax = m, cmap = 'coolwarm', extent = (res['xr'][0], res['xr'][-1], res['yr'][-1], res['yr'][0]))
+        plt.gca().invert_yaxis()
+        plt.title("H1")
+        plt.xlabel("Birth Time")
+        plt.ylabel("Lifetime")
+        plt.subplot(122)
+        m = np.max(np.abs(I2))
+        plt.imshow(I2, vmin = -m, vmax = m, cmap = 'coolwarm', extent = (res['xr'][0], res['xr'][-1], res['yr'][-1], res['yr'][0]))
+        plt.gca().invert_yaxis()
+        plt.title("H2")
+        plt.xlabel("Birth Time")
+        plt.ylabel("Lifetime")
+    else:
+        dim = int(np.sqrt(PIs.shape[1]))
+        w = np.reshape(w, (dim, dim))
+        plt.figure(figsize=(6, 6))
+        m = np.max(np.abs(w))
+        plt.imshow(w, vmin = -m, vmax = m, cmap = 'coolwarm', extent = (res['xr'][0], res['xr'][-1], res['yr'][-1], res['yr'][0]))
+        plt.gca().invert_yaxis()
+        plt.title(savestr)
+        plt.xlabel("Birth Time")
+        plt.ylabel("Lifetime")
+    plt.savefig("RidgeCoeffs_%s.png"%savestr, bbox_inches='tight')
+
+
+def comparePersistenceImages(files, useH1 = True, useH2 = True, psigma = 0.1):
     N = len(files)
     #Make plot names
     plotNames = []
     for f in files:
         plotNames.append(getPlotName(f, "_Is.mat"))
-    
-    #Compute persistence images
-    weightfn = lambda b, l: l*(l > 0.05)
-    PIs = []
-    for i in range(N):
-        print("Getting persistence images %i of %i"%(i+1, N))
-        X = sio.loadmat(files[i])
-        [I0, I1, I2] = [X['I0'], X['I1'], X['I2']]
-        res1 = getPersistenceImage(I1, [0, 2, 0, 2], 0.01, weightfn = weightfn, psigma = psigma)
-        if useH2:
-            res2 = getPersistenceImage(I2, [0, 2, 0, 2], 0.01, weightfn = weightfn, psigma = psigma)
-            I = np.concatenate((res1['PI'], res2['PI']), 0)
-        else:
-            I = res1['PI']
-        PIs.append(I.flatten())
-    PIs = np.array(PIs)
+    (res, PIs) = getPIs(files, useH1, useH2, psigma)
+
 
     #Compute pairwise Euclidean distances between 
     #persistence images, and plot results
@@ -185,7 +261,10 @@ def getBonePDs(filename, M = -1, doAlpha = True, useGUDHI = True, psigma = 0.1):
 
 if __name__ == '__main__':
     files = glob.glob("BoneData/FIGURE_PORTION/*/*/*.mat")
-    comparePersistenceImages(files)
+    #comparePersistenceImages(files, useH2 = True)
+    ridgeRegressionPIs(files)
+    ridgeRegressionPIs(files, useH1 = False)
+    ridgeRegressionPIs(files, useH2 = False)
 
 if __name__ == '__main__2':
     files = glob.glob("BoneData/FIGURE_PORTION/*/*/*.stl")
