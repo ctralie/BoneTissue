@@ -88,7 +88,7 @@ def computeAllPersistenceDiagrams():
         plt.savefig("PDs/%i.png"%i, bbox_inches='tight')
         for k, dgm in enumerate(dgms):
             res['H%i'%k] = dgm
-        res['specimen'] = 'specimen'
+        res['specimen'] = specimen
         sio.savemat("PDs/%i.mat"%i, res)
 
         
