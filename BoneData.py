@@ -51,9 +51,6 @@ def getBoneAlpha(filename, hull_samples = 0):
     filetemp = "%s.off"%filename[0:-4]
     subprocess.call(["meshlabserver", "-i", filename, "-s", "removedup.mlx", "-o", filetemp])
     (X, _, _) = loadOffFile(filetemp)
-    # Add some noise to put into general position (since points were sampled
-    # on a grid, bad things can happen otherwise)
-    X = X + 0.001*np.random.randn(X.shape[0], X.shape[1])
     
     ## Step 2: Sample convex hull, if requested
     Y = np.array(X)
@@ -63,6 +60,10 @@ def getBoneAlpha(filename, hull_samples = 0):
         saveOffFile("hull%i.off"%hull_samples, Ps, np.array([]), np.array([]))
         Y = np.concatenate((Y, Ps))
         saveOffFile("hull%i_withmesh.off"%hull_samples, Y, np.array([]), np.array([]))
+
+    # Add some noise to put into general position (since points were sampled
+    # on a grid, bad things can happen otherwise)
+    Y = Y + 0.001*np.random.randn(Y.shape[0], Y.shape[1])
 
     ## Step 3: Do the Alpha filtration
     alpha = cm.Alpha()
