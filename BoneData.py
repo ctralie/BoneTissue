@@ -83,7 +83,7 @@ def computeAllPersistenceDiagrams():
         plt.axis('equal')
         plt.title("XY Slice, Specimen %s\n%s"%(specimen, json.dumps({s:"%.3g"%res[s] for s in res})))
         plt.subplot(122)
-        #plot_dgms(dgms)
+        plot_dgms(dgms)
         plt.title("Alpha Persistence Diagrams")
         plt.savefig("PDs/%i.png"%i, bbox_inches='tight')
         for k, dgm in enumerate(dgms):
