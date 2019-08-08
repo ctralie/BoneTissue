@@ -2,6 +2,7 @@
 Programmer: Chris Tralie
 Purpose: Some simple routines for dealing with triangle meshes
 """
+import numpy as np
 
 #Return VPos, VColors, and ITris without creating any structure
 #(Assumes triangle mesh)
@@ -44,7 +45,7 @@ def loadOffFileExternal(filename):
                 if len(fields) > 2:
                     fields[1:4] = [int(field) for field in fields]
                     [nVertices, nFaces, nEdges] = fields[1:4]
-                    print "nVertices = %i, nFaces = %i"%(nVertices, nFaces)
+                    print("nVertices = %i, nFaces = %i"%(nVertices, nFaces))
                     #Pre-allocate vertex arrays
                     VPos = np.zeros((nVertices, 3))
                     VColors = np.zeros((nVertices, 3))
