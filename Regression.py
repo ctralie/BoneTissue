@@ -44,6 +44,7 @@ def test_alpha_cv_example():
     X = []
     y = []
     plims = [0, 0.5, 0, 0.61]
+    max_death = 0.7
     shape = ()
     ## Step 1: Generate all of the persistence images
     plt.figure(figsize=(12, 6))
@@ -53,29 +54,30 @@ def test_alpha_cv_example():
         print(i)
         res = sio.loadmat("PDs/%i.mat"%i)
         y.append(res['trabnum'])
-        imgr = pimgs.PersistenceImager(birth_range=(0, 1), 
-                                    pers_range= (0, 1), 
-                                    pixel_size=0.025,
+        imgr = pimgs.PersistenceImager(birth_range=tuple(plims[0:2]), 
+                                    pers_range= tuple(plims[2::]), 
+                                    pixel_size=0.01,
                                     weight=pimgs.weighting_fxns.persistence, 
+                                    #weight=lambda birth, pers, n:n*np.ones(birth.size),
                                     weight_params={'n':1}, 
                                     kernel=pimgs.kernels.bvncdf, 
-                                    kernel_params={'sigma':0.05})
+                                    kernel_params={'sigma':0.02})
         h = np.array(res['H1'])
         h = h[h[:, 1]-h[:, 0] > 0.05, :]
-        print(np.max(h))
         x = imgr.transform(h, skew=True)
+        x = x.T
         if not M:
-            J, I = np.meshgrid(np.linspace(plims[0], plims[1], x.shape[1]), \
-                               np.linspace(plims[2], plims[3], x.shape[1]))
-        x[J+I > plims[-1]] = 0
+            #J, I = np.meshgrid(np.linspace(plims[0], plims[1], x.shape[1]), \
+            #                   np.linspace(plims[2], plims[3], x.shape[1]))
+            J, I = np.meshgrid(imgr._bpnts[0:-1], imgr._ppnts[0:-1])
+        x[J+I > max_death] = 0
         plt.subplot(121)
         plot_diagrams(h, labels=['H1'], lifetime=True)
         plt.title("trabnum = %.3g"%y[-1])
         plt.xlim(plims[0:2])
         plt.ylim(plims[2::])
         plt.subplot(122)
-        vmax = np.max(np.abs(x))
-        plt.imshow(x, vmin=-vmax, vmax=vmax, extent = (plims[0], plims[1], plims[3], plims[2]), cmap='RdBu')
+        plt.imshow(x, extent = (plims[0], plims[1], plims[3], plims[2]), cmap='magma_r')
         plt.gca().invert_yaxis()
         plt.savefig("PI%i.png"%i, bbox_inches='tight')
         shape = x.shape
