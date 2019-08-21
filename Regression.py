@@ -8,6 +8,7 @@ import numpy as np
 import scipy
 import scipy.io as sio
 import matplotlib.pyplot as plt
+import matplotlib.colors as colors
 import pandas as pd
 
 # persistence images routines
@@ -35,6 +36,42 @@ def get_bone_data_df():
     vals['dgm'] = [{h:bone_data[i][h] for h in ['H1', 'H2']} for i in range(N)]
     return pd.DataFrame(vals)
 
+def vec_dgm_by_per(dgm, start=0, num_pairs=50, per_only=True):
+    """
+    Generates a simple feature vector of length num_pairs or 2*(num_pairs) from a persistence diagram that consists
+    of either the persistence or the birth & death values of the `start` through the `start+num_pairs` most persistent pairs.
+    :param dgm: (N,2) numpy array encoding a persistence diagram
+    :param start: non-negative integer specifying the first most persistence pair to consider 
+    :param num_pairs: positive integer specifying the number of persistence pairs to consider
+    :param per_only: If True, the end-start coordinates encode only the persistence of each pair, otherwise the 2*(end-start) 
+               coordinates encode the birth and death of each pair.
+    """  
+    dgm = np.copy(dgm)
+    N = dgm.shape[0]
+    
+    pers = dgm[:, 1]-dgm[:, 0]
+    
+    # make sure we have valid indices
+    start=int(start)
+    end=int(start+num_pairs)
+    start = min(start, N)
+    end = min(end, N)
+
+    ind = pers.argsort()[::-1]
+    dgm = dgm[ind, :]
+    pers = pers[ind]
+
+    num_pairs = int(num_pairs)
+    start, end = int(start), int(end)
+    if per_only:
+        ret = np.zeros(num_pairs)
+        ret[0:end-start] = pers[start:end]
+        return ret
+    else:
+        ret = np.zeros((num_pairs, 2))
+        ret[0:end-start] = dgm[start:end, :]
+        return ret.flatten(order='C')
+
 def test_alpha_cv_example():
     """
     Choose a set of reasonable parameters and test alpha cross
@@ -44,50 +81,32 @@ def test_alpha_cv_example():
     X = []
     y = []
     plims = [0, 0.5, 0, 0.61]
-    max_death = 0.7
-    shape = ()
     ## Step 1: Generate all of the persistence images
     plt.figure(figsize=(12, 6))
-    M = None
+    start = 42
+    npairs = 40
     for i in range(N):
         plt.clf()
         print(i)
         res = sio.loadmat("PDs/%i.mat"%i)
         y.append(res['trabnum'])
-        imgr = pimgs.PersistenceImager(birth_range=tuple(plims[0:2]), 
-                                    pers_range= tuple(plims[2::]), 
-                                    pixel_size=0.01,
-                                    weight=pimgs.weighting_fxns.persistence, 
-                                    #weight=lambda birth, pers, n:n*np.ones(birth.size),
-                                    weight_params={'n':1}, 
-                                    kernel=pimgs.kernels.bvncdf, 
-                                    kernel_params={'sigma':0.02})
         h = np.array(res['H1'])
-        h = h[h[:, 1]-h[:, 0] > 0.05, :]
-        x = imgr.transform(h, skew=True)
-        x = x.T
-        if not M:
-            #J, I = np.meshgrid(np.linspace(plims[0], plims[1], x.shape[1]), \
-            #                   np.linspace(plims[2], plims[3], x.shape[1]))
-            J, I = np.meshgrid(imgr._bpnts[0:-1], imgr._ppnts[0:-1])
-        x[J+I > max_death] = 0
+        x = vec_dgm_by_per(h, start, npairs, per_only=False)
         plt.subplot(121)
         plot_diagrams(h, labels=['H1'], lifetime=True)
         plt.title("trabnum = %.3g"%y[-1])
         plt.xlim(plims[0:2])
         plt.ylim(plims[2::])
         plt.subplot(122)
-        plt.imshow(x, extent = (plims[0], plims[1], plims[3], plims[2]), cmap='magma_r')
-        plt.gca().invert_yaxis()
-        plt.savefig("PI%i.png"%i, bbox_inches='tight')
-        shape = x.shape
+        plt.plot(x)
+        plt.savefig("Pers%i.png"%i, bbox_inches='tight')
         X.append(x.flatten())
     X = np.array(X)
     y = np.array(y)
     y = y.flatten()
 
     ## Step 2: Do cross-validation over different alphas for ridge regression
-    alphas = np.logspace(0, 4, 100)
+    alphas = np.logspace(-4, 4, 100)
     scorer = make_scorer(mean_squared_error)
     pipeline_ridge = Pipeline([('scaler', StandardScaler()), ('ridge', Ridge(fit_intercept=True))])
     gr = GridSearchCV(pipeline_ridge, cv=6, param_grid={"ridge__alpha":alphas}, scoring=scorer)
@@ -100,8 +119,7 @@ def test_alpha_cv_example():
         pipeline_ridge = Pipeline([('scaler', StandardScaler()), ('ridge', Ridge(fit_intercept=True, alpha=alphas[idx]))])
         pipeline_ridge.fit(X, y)
         y_est = pipeline_ridge.predict(X)
-        img = pipeline_ridge.steps[1][1].coef_
-        img = np.reshape(img, shape)
+        coef = pipeline_ridge.steps[1][1].coef_
         plt.clf()
         plt.subplot(131)
         plt.plot(alphas, errs)
@@ -116,35 +134,62 @@ def test_alpha_cv_example():
         plt.xlabel("True Trabecular Number")
         plt.ylabel("Predicted Trabecular Number")
         plt.subplot(133)
-        lim = np.max(np.abs(img))
-        plt.imshow(img, vmin=-lim, vmax=lim, extent = (plims[0], plims[1], plims[3], plims[2]), cmap = 'RdBu', interpolation = 'nearest')
-        plt.gca().invert_yaxis()
-        plt.xlabel("Birth")
+        plt.xlabel("Sorted Persistence Index")
         plt.ylabel("Persistence")
+        plt.title("Ridge Regression Coefficients")
+        plt.plot(coef)
         plt.savefig("%i.png"%idx, bbox_inches='tight')
 
 def do_bone_gridsearch():
-    #TODO: FINISH THIS
     bone_df = get_bone_data_df()
     dgm_df = bone_df[['dgm']]
     y = bone_df['trabnum'].values
-    scorer = make_scorer(mean_squared_error)
-    
-    # setup the imager object with specified parameters
-    imgr = pimgs.PersistenceImager(birth_range=(0, 1), 
-                                   pers_range= (0, 1), 
-                                   pixel_size=pixel_size,
-                                   weight=pimgs.weighting_fxns.persistence, 
-                                   weight_params=weight_params, 
-                                   kernel=pimgs.kernels.bvncdf, 
-                                   kernel_params=kernel_params)
-    
-    pixels_sizes = np.linspace(0.01, 0.2, 10)
-    sigmas = np.linspace(0.01, 0.4, 10)
-    weight_params = np.linspace(1.0, 3.0, 10)
+    y = y.flatten()
 
-    pipeline_ridge = Pipeline([('scaler', StandardScaler()), ('ridge', Ridge())])
-    #TODO: FINISH THIS    
+    N = 150
+    per_only=True
+    alphas = np.logspace(-4, 4, 100)
+    scorer = make_scorer(mean_squared_error)
+
+    all_mses = np.inf*np.ones((N, N, alphas.size))
+    for start in range(N):
+        for end in range(start+1, N):
+            npairs=end-start
+            X = []
+            for i in range(dgm_df.shape[0]):
+                h = dgm_df['dgm'][i]['H1']
+                x = vec_dgm_by_per(h, start, npairs, per_only=per_only)
+                X.append(x.flatten())
+            X = np.array(X)
+            pipeline_ridge = Pipeline([('scaler', StandardScaler()), ('ridge', Ridge(fit_intercept=True))])
+            gr = GridSearchCV(pipeline_ridge, cv=6, param_grid={"ridge__alpha":alphas}, scoring=scorer)
+            gr.fit(X, y)
+            errs = gr.cv_results_['mean_test_score']
+            all_mses[start, end, :] = errs
+            idx = np.argmin(all_mses)
+            idx = np.unravel_index(idx, (N, N, alphas.size))
+            print("(%i, %i) err %.3g, best so far (%i, %i): %.3g"%(start, end, np.min(errs), idx[0], idx[1], np.min(all_mses)))
+        sio.savemat("gridsearch.mat", {"all_mses":all_mses})
+    mses_opt = np.min(all_mses, 2)
+    alphas_opt = alphas[np.argmin(all_mses, 2)]
+    plt.figure(figsize=(12, 6))
+    J, I = np.meshgrid(np.arange(N)+1, np.arange(N)+1)
+    plt.subplot(121)
+    pcm = plt.gca().pcolor(J, I, mses_opt.T, cmap='magma_r')
+    plt.gcf().colorbar(pcm, ax=plt.gca(), extend='max')
+    plt.xlabel("Start Index")
+    plt.ylabel("End Index")
+    plt.title("MSEs")
+    plt.subplot(122)
+    pcm = plt.gca().pcolor(J, I, alphas_opt.T, norm=colors.LogNorm(vmin=alphas_opt.min()+1e-5, vmax=alphas_opt.max()), cmap='magma_r')
+    plt.gcf().colorbar(pcm, ax=plt.gca(), extend='max')
+    plt.xlabel("Start Index")
+    plt.ylabel("End Index")
+    plt.title("Alphas")
+    plt.show()
+
+
 
 if __name__ == '__main__':
-    test_alpha_cv_example()
+    #test_alpha_cv_example()
+    do_bone_gridsearch()
