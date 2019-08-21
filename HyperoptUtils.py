@@ -19,6 +19,7 @@ from hyperopt.pyll.stochastic import sample
 
 # persistence images routines
 import PersistenceImages.persistence_images as pimgs
+from persim import plot_diagrams
 
 from sklearn.decomposition import PCA
 from sklearn.model_selection import cross_validate
@@ -31,6 +32,8 @@ from sklearn.model_selection import train_test_split
 import os.path
 
 ITER = 0
+I = np.array([])
+J = np.array([])
 
 def vec_dgm_by_per(dgm, start=0, num_pairs=50, per_only=True):
     """
@@ -57,6 +60,8 @@ def vec_dgm_by_per(dgm, start=0, num_pairs=50, per_only=True):
     dgm = dgm[ind, :]
     pers = pers[ind]
 
+    num_pairs = int(num_pairs)
+    start, end = int(start), int(end)
     if per_only:
         ret = np.zeros(num_pairs)
         ret[0:end-start] = pers[start:end]
@@ -66,7 +71,7 @@ def vec_dgm_by_per(dgm, start=0, num_pairs=50, per_only=True):
         ret[0:end-start] = dgm[start:end, :]
         return ret.flatten(order='C')
 
-def vec_dgm_by_per_images(dgm, birth_range=None, pers_range=None, pixel_size=None, weight=pimgs.weighting_fxns.persistence, weight_params=None, kernel=pimgs.kernels.bvncdf, kernel_params=None, skew=True):
+def vec_dgm_by_per_images(dgm, birth_range=None, pers_range=None, max_death=None, pixel_size=None, weight=pimgs.weighting_fxns.persistence, weight_params=None, kernel=pimgs.kernels.bvncdf, kernel_params=None, skew=True, do_plot=False):
     """
     Generates a flattened persistence image feature vector from a persistence diagram subject to the specified hyperparameters
     :param dgm: (N,2) numpy array encoding a persistence diagram
@@ -94,6 +99,22 @@ def vec_dgm_by_per_images(dgm, birth_range=None, pers_range=None, pixel_size=Non
     
     # generate and return the persistence image
     img = imgr.transform(dgm, skew=skew)
+    if max_death:
+        global I
+        global J
+        if I.size == 0:
+            J, I = np.meshgrid(imgr._bpnts[0:-1], imgr._ppnts[0:-1])
+        img = img.T
+        img[J+I > max_death] = 0
+        if do_plot:
+            plt.clf()
+            plt.subplot(121)
+            plot_diagrams(dgm, labels=['dgm'])
+            plt.subplot(122)
+            plt.imshow(img, extent = (birth_range[0], birth_range[1], pers_range[0], pers_range[1]), cmap='magma_r', interpolation='none')
+            plt.gca().invert_yaxis()
+            plt.savefig("n%.3g_sigma%.3g_pix%.3g.png"%(weight_params['n'], kernel_params['sigma'], pixel_size), bbox_inches='tight')
+
     return img.flatten(order='C')
 
 def gen_dgm_feature_df(dgm_df, method):
