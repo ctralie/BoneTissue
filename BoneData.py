@@ -104,6 +104,18 @@ def computeAllPersistenceDiagrams(hull_samples=0):
         res['specimen'] = specimen
         sio.savemat("PDs/%i_%i.mat"%(i, hull_samples), res)
 
+def get_bone_data_df():
+    """
+    Return the bone data as data frames
+    """
+    import pandas as pd
+    N = 18
+    bone_data = [sio.loadmat("PDs/%i.mat"%i) for i in range(N)]
+    vals = ['trabnum', 'trabtick', 'trablen', 'bv_tv']
+    vals = {v:[bone_data[i][v].flatten()[0] for i in range(N)] for v in vals}
+    vals['dgm'] = [{h:bone_data[i][h] for h in ['H1', 'H2']} for i in range(N)]
+    return pd.DataFrame(vals)
+
         
 if __name__ == '__main__':
     computeAllPersistenceDiagrams(hull_samples=10000)

@@ -31,7 +31,6 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 import os.path
 
-ITER = 0
 I = np.array([])
 J = np.array([])
 
@@ -219,7 +218,7 @@ def lotocv_objective(params, dgm_df, target_df, scorer, verbose=False):
     # -----------------------
     endtime = time.time()
 
-    return {'loss': loss, 'status': STATUS_OK, 'params': params, 'eval_time': endtime-starttime, 'iteration': ITER}
+    return {'loss': loss, 'status': STATUS_OK, 'params': params, 'eval_time': endtime-starttime}
 
 
 def cv_objective(params, dgm_df, target_df, scorer, cv=10, verbose=False):
@@ -256,9 +255,6 @@ def cv_objective(params, dgm_df, target_df, scorer, cv=10, verbose=False):
     ** NOTE: `dgm_df`, `target_df`, `scorer`, and `fixed_params` are not part of the optimization search space and will be 
              fixed during the optimization process while the parameters in `params` are allowed to vary **
     """   
-    # track global iteration
-    global ITER
-    ITER=ITER+1
     starttime = time.time()
     # ---------------------
     
@@ -308,83 +304,4 @@ def cv_objective(params, dgm_df, target_df, scorer, cv=10, verbose=False):
     # -----------------------
     endtime = time.time()
 
-    return {'loss': loss, 'status': STATUS_OK, 'params': params, 'eval_time': endtime-starttime, 'iteration': ITER}
-
-def get_bone_data_df():
-    """
-    Return the bone data as data frames
-    """
-    N = 18
-    bone_data = [sio.loadmat("PDs/%i.mat"%i) for i in range(N)]
-    vals = ['trabnum', 'trabtick', 'trablen', 'bv_tv']
-    vals = {v:[bone_data[i][v].flatten()[0] for i in range(N)] for v in vals}
-    vals['dgm'] = [{h:bone_data[i][h] for h in ['H1', 'H2']} for i in range(N)]
-    return pd.DataFrame(vals)
-
-if __name__ == '__main__':
-    # -------------------
-    # Perform a more complex Bayesian optimization search across persistence images,
-    # as well as number of principal components to retain and various RF model hyperparameters to plot over-time improvement of 
-    # loss
-    bone_df = get_bone_data_df()
-    dgm_df = bone_df[['dgm']]
-    target_df = bone_df['trabnum']
-    scorer = make_scorer(mean_squared_error)
-    max_evals = 495
-    cv=5
-
-    # precompute the persistence image region over the full dataset
-    birth_range = (0, 1)
-    pers_range = (0, 1)
-    
-    pipeline_ridge = Pipeline([('scaler', StandardScaler()), ('ridge', Ridge())])
-
-    param_space = {'estimator_params': 
-                    {
-                    'method': pipeline_ridge,
-                    'kwargs':  {
-                                'ridge__normalize':False,
-                                'ridge__fit_intercept':True,
-                                'ridge__alpha':hp.loguniform('alphas', -10, 0)
-                                }
-                    },
-                    'dgm_vec_params':
-                    hp.choice('dgm_vec_params',
-                    [
-                    {
-                    'method': vec_dgm_by_per_images,
-                    'kwargs': {
-                                'birth_range': birth_range,
-                                'pers_range': pers_range,
-                                'pixel_size': hp.uniform('pixel_size', 0.025, 1.0),
-                                'weight_params': {'n': hp.uniform('n', 1, 3)},
-                                'kernel_params': {'sigma': hp.uniform('sigma', 0, 0.2)}
-                                }
-                    }
-                    ])
-                }
-
-
-    # ---------------------------------
-    # create the objective function to minimize, passing in all fixed arguments
-    objective = lambda params: cv_objective(params,
-                                            dgm_df=dgm_df,
-                                            target_df=target_df, 
-                                            scorer=scorer,
-                                            cv=cv,
-                                            verbose=True)
-
-
-    # continue parameterization run if already started
-    if os.path.isfile('data/complex_vec_dgm_bayes_trials.pickle'):
-        with open('data/complex_vec_dgm_bayes_trials.pickle','rb') as f:
-            bayes_trials = pickle.load(f)
-    else:
-        bayes_trials = Trials()
-
-    # run the hyperparamter optimization
-    best = fmin(fn=objective, 
-                space=param_space, 
-                algo=tpe.suggest, 
-                max_evals=max_evals, 
-                trials=bayes_trials)
+    return {'loss': loss, 'status': STATUS_OK, 'params': params, 'eval_time': endtime-starttime}

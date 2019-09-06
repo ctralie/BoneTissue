@@ -10,9 +10,11 @@ import scipy.io as sio
 import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import pandas as pd
+from BoneData import get_bone_data_df
 
 # persistence images routines
 import PersistenceImages.persistence_images as pimgs
+from HyperoptUtils import vec_dgm_by_per
 from persim import plot_diagrams
 
 from sklearn.pipeline import Pipeline
@@ -25,57 +27,11 @@ from sklearn.model_selection import train_test_split
 import os.path
 
 
-def get_bone_data_df():
-    """
-    Return the bone data as data frames
-    """
-    N = 18
-    bone_data = [sio.loadmat("PDs/%i.mat"%i) for i in range(N)]
-    vals = ['trabnum', 'trabtick', 'trablen', 'bv_tv']
-    vals = {v:[bone_data[i][v].flatten()[0] for i in range(N)] for v in vals}
-    vals['dgm'] = [{h:bone_data[i][h] for h in ['H1', 'H2']} for i in range(N)]
-    return pd.DataFrame(vals)
-
-def vec_dgm_by_per(dgm, start=0, num_pairs=50, per_only=True):
-    """
-    Generates a simple feature vector of length num_pairs or 2*(num_pairs) from a persistence diagram that consists
-    of either the persistence or the birth & death values of the `start` through the `start+num_pairs` most persistent pairs.
-    :param dgm: (N,2) numpy array encoding a persistence diagram
-    :param start: non-negative integer specifying the first most persistence pair to consider 
-    :param num_pairs: positive integer specifying the number of persistence pairs to consider
-    :param per_only: If True, the end-start coordinates encode only the persistence of each pair, otherwise the 2*(end-start) 
-               coordinates encode the birth and death of each pair.
-    """  
-    dgm = np.copy(dgm)
-    N = dgm.shape[0]
-    
-    pers = dgm[:, 1]-dgm[:, 0]
-    
-    # make sure we have valid indices
-    start=int(start)
-    end=int(start+num_pairs)
-    start = min(start, N)
-    end = min(end, N)
-
-    ind = pers.argsort()[::-1]
-    dgm = dgm[ind, :]
-    pers = pers[ind]
-
-    num_pairs = int(num_pairs)
-    start, end = int(start), int(end)
-    if per_only:
-        ret = np.zeros(num_pairs)
-        ret[0:end-start] = pers[start:end]
-        return ret
-    else:
-        ret = np.zeros((num_pairs, 2))
-        ret[0:end-start] = dgm[start:end, :]
-        return ret.flatten(order='C')
-
-def test_alpha_cv_example():
+def test_alpha_cv_grabandsort_example():
     """
     Choose a set of reasonable parameters and test alpha cross
     validation on the standard scaler + ridge regression pipeline
+    on grabbed and sorted vectors from persistence diagrams
     """
     N = 18
     X = []
@@ -83,15 +39,16 @@ def test_alpha_cv_example():
     plims = [0, 0.5, 0, 0.61]
     ## Step 1: Generate all of the persistence images
     plt.figure(figsize=(12, 6))
-    start = 42
-    npairs = 40
+    start = 31
+    npairs = 65-31
+    per_only = True
     for i in range(N):
         plt.clf()
         print(i)
         res = sio.loadmat("PDs/%i.mat"%i)
         y.append(res['trabnum'])
         h = np.array(res['H1'])
-        x = vec_dgm_by_per(h, start, npairs, per_only=False)
+        x = vec_dgm_by_per(h, start, npairs, per_only=per_only)
         plt.subplot(121)
         plot_diagrams(h, labels=['H1'], lifetime=True)
         plt.title("trabnum = %.3g"%y[-1])
@@ -147,7 +104,7 @@ def do_bone_gridsearch():
     y = y.flatten()
 
     N = 150
-    per_only=True
+    per_only=False
     alphas = np.logspace(-4, 4, 100)
     scorer = make_scorer(mean_squared_error)
 
@@ -191,5 +148,5 @@ def do_bone_gridsearch():
 
 
 if __name__ == '__main__':
-    #test_alpha_cv_example()
-    do_bone_gridsearch()
+    test_alpha_cv_grabandsort_example()
+    #do_bone_gridsearch()
