@@ -3,7 +3,6 @@ Programmer: Francis Motta, edited by Chris Tralie
 """
 import csv
 import time
-import pickle
 import numpy as np
 import scipy.io as sio
 import matplotlib.pyplot as plt
@@ -30,9 +29,6 @@ from sklearn.linear_model import Ridge
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 import os.path
-
-I = np.array([])
-J = np.array([])
 
 def vec_dgm_by_per(dgm, start=0, num_pairs=50, per_only=True):
     """
@@ -99,10 +95,7 @@ def vec_dgm_by_per_images(dgm, birth_range=None, pers_range=None, max_death=None
     # generate and return the persistence image
     img = imgr.transform(dgm, skew=skew)
     if max_death:
-        global I
-        global J
-        if I.size == 0:
-            J, I = np.meshgrid(imgr._bpnts[0:-1], imgr._ppnts[0:-1])
+        J, I = np.meshgrid(imgr._bpnts[0:-1], imgr._ppnts[0:-1])
         img = img.T
         img[J+I > max_death] = 0
         if do_plot:

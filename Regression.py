@@ -11,10 +11,11 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import pandas as pd
 from BoneData import get_bone_data_df
+from sklearn.model_selection import KFold
 
 # persistence images routines
 import PersistenceImages.persistence_images as pimgs
-from HyperoptUtils import vec_dgm_by_per
+from HyperoptUtils import *
 from persim import plot_diagrams
 
 from sklearn.pipeline import Pipeline
@@ -27,40 +28,104 @@ from sklearn.model_selection import train_test_split
 import os.path
 
 
-def test_alpha_cv_grabandsort_example():
+def test_alpha_cv_grabandsort_example(do_plots=True):
     """
     Choose a set of reasonable parameters and test alpha cross
     validation on the standard scaler + ridge regression pipeline
     on grabbed and sorted vectors from persistence diagrams
     """
     N = 18
-    X = []
-    y = []
-    plims = [0, 0.5, 0, 0.61]
-    ## Step 1: Generate all of the persistence images
-    plt.figure(figsize=(12, 6))
-    start = 31
-    npairs = 65-31
-    per_only = True
-    for i in range(N):
-        plt.clf()
-        print(i)
-        res = sio.loadmat("PDs/%i.mat"%i)
-        y.append(res['trabnum'])
-        h = np.array(res['H1'])
-        x = vec_dgm_by_per(h, start, npairs, per_only=per_only)
-        plt.subplot(121)
-        plot_diagrams(h, labels=['H1'], lifetime=True)
-        plt.title("trabnum = %.3g"%y[-1])
-        plt.xlim(plims[0:2])
-        plt.ylim(plims[2::])
-        plt.subplot(122)
-        plt.plot(x)
-        plt.savefig("Pers%i.png"%i, bbox_inches='tight')
-        X.append(x.flatten())
-    X = np.array(X)
-    y = np.array(y)
+    bone_df = get_bone_data_df()
+    dgm_df = bone_df[['dgm']]
+    y = bone_df['trabnum'].values
     y = y.flatten()
+
+    fn = lambda dgm: vec_dgm_by_per(dgm, start=0, num_pairs=50, per_only=True)
+    X = gen_dgm_feature_df(dgm_df, fn).values
+    print(X.shape)
+
+    ## Step 1: Generate all of the persistence images
+    if do_plots and False:
+        plt.figure(figsize=(12, 6))
+        for i in range(N):
+            plt.clf()
+            plt.subplot(121)
+            plot_diagrams(h, labels=['H1'], lifetime=True)
+            plt.title("trabnum = %.3g"%y[-1])
+            plt.xlim(plims[0:2])
+            plt.ylim(plims[2::])
+            plt.subplot(122)
+            plt.plot(x)
+            plt.savefig("Pers%i.png"%i, bbox_inches='tight')
+
+    ## Step 2: Do cross-validation over different alphas for ridge regression
+    cv = 6 #KFold(n_splits=6, shuffle=True, random_state=0)
+    alphas = np.logspace(-4, 4, 100)
+    scorer = make_scorer(mean_squared_error)
+    pipeline_ridge = Pipeline([('scaler', StandardScaler()), ('ridge', Ridge(fit_intercept=True, normalize=False))])
+    gr = GridSearchCV(pipeline_ridge, cv=cv, param_grid={"ridge__alpha":alphas}, scoring=scorer)
+    gr.fit(X, y)
+    errs = gr.cv_results_['mean_test_score']
+
+    print("Err: %.3g, at Alpha: %.3g"%(np.min(errs), alphas[np.argmin(errs)]))
+    
+    ## Step 3: Plot the results for different alphas, applied to the whole dataset
+    plt.figure(figsize=(18, 6))
+    for idx in range(errs.size):
+        pipeline_ridge = Pipeline([('scaler', StandardScaler()), ('ridge', Ridge(fit_intercept=True, alpha=alphas[idx]))])
+        pipeline_ridge.fit(X, y)
+        y_est = pipeline_ridge.predict(X)
+        coef = pipeline_ridge.steps[1][1].coef_
+        if do_plots:
+            plt.clf()
+            plt.subplot(131)
+            plt.plot(alphas, errs)
+            plt.scatter([alphas[idx]], [errs[idx]])
+            plt.gca().set_xscale("log")
+            plt.xlabel("$\\alpha$")
+            plt.ylabel("MSE")
+            plt.title("Bone Data Ridge Regression Test")
+            plt.subplot(132)
+            plt.scatter(y, y_est)
+            plt.title("$\\alpha = %.3g$, MSE = %.3g"%(alphas[idx], errs[idx]))
+            plt.xlabel("True Trabecular Number")
+            plt.ylabel("Predicted Trabecular Number")
+            plt.subplot(133)
+            plt.xlabel("Sorted Persistence Index")
+            plt.ylabel("Persistence")
+            plt.title("Ridge Regression Coefficients")
+            plt.plot(coef)
+            plt.savefig("%i.png"%idx, bbox_inches='tight')
+
+
+def test_alpha_cv_PI_example():
+    """
+    Choose a set of reasonable parameters and test alpha cross
+    validation on the standard scaler + ridge regression pipeline
+    on concatenated persistence images from H1 and H2
+    """
+    bone_df = get_bone_data_df()
+    dgm_df = bone_df[['dgm']]
+    y = bone_df['trabnum'].values
+    y = y.flatten()
+
+    birth_range = (0, 0.5)
+    pers_range = (0, 0.61)
+    max_death = 0.7
+    pixel_size = 0.005
+    weight_params = {'n':1}
+    kernel_params = {'sigma':0.025}
+
+
+    fn = lambda dgm: vec_dgm_by_per_images(dgm, birth_range=birth_range, pers_range=pers_range, max_death=max_death, pixel_size=pixel_size, weight=pimgs.weighting_fxns.persistence, weight_params=weight_params, kernel_params=kernel_params)
+    X = gen_dgm_feature_df(dgm_df, fn).values
+
+    # Figure out shape and pixel locations by calling once as an example
+    imgr = pimgs.PersistenceImager(birth_range=birth_range, pers_range=pers_range, pixel_size=pixel_size, weight=pimgs.weighting_fxns.persistence, weight_params=weight_params, kernel_params=kernel_params)
+    img_example = imgr.transform(np.array([[0, 0]]), skew=True)
+    img_example = img_example.T
+    #J, I = np.meshgrid(imgr._bpnts[0:-1], imgr._ppnts[0:-1])
+
 
     ## Step 2: Do cross-validation over different alphas for ridge regression
     alphas = np.logspace(-4, 4, 100)
@@ -76,7 +141,10 @@ def test_alpha_cv_grabandsort_example():
         pipeline_ridge = Pipeline([('scaler', StandardScaler()), ('ridge', Ridge(fit_intercept=True, alpha=alphas[idx]))])
         pipeline_ridge.fit(X, y)
         y_est = pipeline_ridge.predict(X)
-        coef = pipeline_ridge.steps[1][1].coef_
+        coeff = pipeline_ridge.steps[1][1].coef_
+        h1coeff = np.reshape(coeff[0:img_example.size], img_example.shape)
+        h2coeff = np.reshape(coeff[img_example.size::], img_example.shape)
+
         plt.clf()
         plt.subplot(131)
         plt.plot(alphas, errs)
@@ -84,20 +152,29 @@ def test_alpha_cv_grabandsort_example():
         plt.gca().set_xscale("log")
         plt.xlabel("$\\alpha$")
         plt.ylabel("MSE")
-        plt.title("Bone Data Ridge Regression Test")
-        plt.subplot(132)
-        plt.scatter(y, y_est)
         plt.title("$\\alpha = %.3g$, MSE = %.3g"%(alphas[idx], errs[idx]))
-        plt.xlabel("True Trabecular Number")
-        plt.ylabel("Predicted Trabecular Number")
-        plt.subplot(133)
-        plt.xlabel("Sorted Persistence Index")
+
+        plt.subplot(132)
+        lim = np.max(np.abs(h1coeff))
+        plt.imshow(h1coeff, vmin=-lim, vmax=lim, extent = (birth_range[0], birth_range[1], pers_range[1], pers_range[0]), cmap = 'RdBu', interpolation = 'nearest')
+        plt.gca().invert_yaxis()
+        plt.xlabel("Birth")
         plt.ylabel("Persistence")
-        plt.title("Ridge Regression Coefficients")
-        plt.plot(coef)
+        plt.title("H1 Coefficients")
+
+        plt.subplot(133)
+        lim = np.max(np.abs(h2coeff))
+        plt.imshow(h2coeff, vmin=-lim, vmax=lim, extent = (birth_range[0], birth_range[1], pers_range[1], pers_range[0]), cmap = 'RdBu', interpolation = 'nearest')
+        plt.gca().invert_yaxis()
+        plt.xlabel("Birth")
+        plt.ylabel("Persistence")
+        plt.title("H2 Coefficients")
+
         plt.savefig("%i.png"%idx, bbox_inches='tight')
 
-def do_bone_gridsearch():
+
+
+def do_bone_gridsearch_grabandsort():
     bone_df = get_bone_data_df()
     dgm_df = bone_df[['dgm']]
     y = bone_df['trabnum'].values
@@ -148,5 +225,6 @@ def do_bone_gridsearch():
 
 
 if __name__ == '__main__':
-    test_alpha_cv_grabandsort_example()
+    #test_alpha_cv_grabandsort_example(do_plots=True)
+    test_alpha_cv_PI_example()
     #do_bone_gridsearch()
