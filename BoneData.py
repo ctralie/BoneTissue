@@ -26,6 +26,15 @@ def getPlotName(f, ext):
     s = "%s_%s"%(s1, s2)
     return s
 
+def getBoneDimensions(filename):
+    """
+    Compute the bounding box of a bone sample
+    """
+    filetemp = "%s.off"%filename[0:-4]
+    subprocess.call(["meshlabserver", "-i", filename, "-s", "removedup.mlx", "-o", filetemp])
+    (X, _, _) = loadOffFile(filetemp)
+    return X.shape[0], np.max(X, 0) - np.min(X, 0)
+
 def getBoneAlpha(filename, hull_samples = 0):
     """
     Compute the Alpha filtration of a bone specimen
@@ -118,4 +127,9 @@ def get_bone_data_df():
 
         
 if __name__ == '__main__':
-    computeAllPersistenceDiagrams(hull_samples=10000)
+    #computeAllPersistenceDiagrams(hull_samples=10000)
+    dimensions = []
+    for i, f in enumerate(glob.glob("BoneData/FIGURE_PORTION/*/*/*.stl")):
+        dimensions.append(getBoneDimensions(f))
+    for (N, d) in dimensions:
+        print(N, d, np.prod(d))
