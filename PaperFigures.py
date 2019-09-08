@@ -188,16 +188,16 @@ def plot_coeffs(h1coeff, h2coeff, birth_range, pers_range, k, title):
     lim = np.max(np.abs(h1coeff))
     plt.imshow(h1coeff, vmin=-lim, vmax=lim, extent = (birth_range[0], birth_range[1], pers_range[1], pers_range[0]), cmap = 'RdBu', interpolation = 'nearest')
     plt.gca().invert_yaxis()
-    plt.xlabel("Birth")
-    plt.ylabel("Persistence")
+    plt.xlabel("Birth (mm)")
+    plt.ylabel("Persistence (mm)")
     plt.title("%s H1"%title)
 
     plt.subplot(2, 4, 4+k+2)
     lim = np.max(np.abs(h2coeff))
     plt.imshow(h2coeff, vmin=-lim, vmax=lim, extent = (birth_range[0], birth_range[1], pers_range[1], pers_range[0]), cmap = 'RdBu', interpolation = 'nearest')
     plt.gca().invert_yaxis()
-    plt.xlabel("Birth")
-    plt.ylabel("Persistence")
+    plt.xlabel("Birth (mm)")
+    plt.ylabel("Persistence (mm)")
     plt.title("%s H2"%title)
 
 def test_alpha_cv_PI_example():
@@ -224,11 +224,11 @@ def test_alpha_cv_PI_example():
     idx_coarse = np.argmin(res_coarse['errs'])
     idx_fine = np.argmin(res_fine['errs'])
     h1coeff, h2coeff = get_coeffs(res_coarse, alphas, idx_coarse)
-    plot_coeffs(h1coeff, h2coeff, birth_range, pers_range, 0, "res=$%.3g$, $\\beta=%.3g$"%(resol_coarse, alphas[idx_coarse]))
+    plot_coeffs(h1coeff, h2coeff, birth_range, pers_range, 0, "Coarse, $\\beta_1$,")
     h1coeff, h2coeff = get_coeffs(res_fine, alphas, idx_coarse)
-    plot_coeffs(h1coeff, h2coeff, birth_range, pers_range, 2, "res=$%.3g$, $\\beta=%.3g$"%(resol_fine, alphas[idx_coarse]))
+    plot_coeffs(h1coeff, h2coeff, birth_range, pers_range, 2, "Fine, $\\beta_1$,")
     h1coeff, h2coeff = get_coeffs(res_fine, alphas, idx_fine)
-    plot_coeffs(h1coeff, h2coeff, birth_range, pers_range, 1, "res=$%.3g$, $\\beta=%.3g$"%(resol_fine, alphas[idx_fine]))
+    plot_coeffs(h1coeff, h2coeff, birth_range, pers_range, 1, "Fine, $\\beta_2$,")
 
 
     plt.subplot(241)
@@ -239,8 +239,10 @@ def test_alpha_cv_PI_example():
     plt.scatter([alphas[idx_coarse]], [res_fine['errs'][idx_coarse]], c='C1')
     plt.scatter([alphas[idx_fine]], [res_fine['errs'][idx_fine]], c='C1')
     plt.gca().set_xscale("log")
+    plt.xticks([alphas[idx_coarse], 0.001, alphas[idx_fine], 1, 100, 10000], ['$\\beta_1$', '$10^{-3}$', '$\\beta_2$', '$10^0$', '$10^2$', '$10^4$'])
     plt.xlabel("$\\beta$")
     plt.ylabel("Trab.Num RMSE (1/mm)")
+    plt.title("RMSE Vs Ridge Regularization $\\beta$")
 
     plt.tight_layout()
     plt.savefig("RidgeCoeffs.svg", bbox_inches='tight')
